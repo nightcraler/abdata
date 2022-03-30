@@ -1,88 +1,144 @@
 <?php
 
 
+//Start
 $start= microtime(true);
-echo 'Start';
+echo 'Start: '.$start;
 
+//Einbinden der Configuration
 include('AdditionalConfiguration.php');
+//Datenbank Link
 $db_link = $GLOBALS['dblink'];
 
 
-
+//Arrays mit den zu bearbeitenden Dateien
 $checkfilearray = array();
 
-$checkfilearray[] = '/ADR_APO.GES';
-$checkfilearray[] = '/DAR_APO.GES';
-$checkfilearray[] = '/PGR_APO.GES';
-$checkfilearray[] = '/PGR2_APO.GES';
-$checkfilearray[] = '/WAR_APO.GES';
-$checkfilearray[] = '/PAC_APO.GES';
+//$checkfilearray[] = '/ADR_APO.GES';
+//$checkfilearray[] = '/DAR_APO.GES';
+//$checkfilearray[] = '/PGR_APO.GES';
+//$checkfilearray[] = '/PGR2_APO.GES';
+//$checkfilearray[] = '/WAR_APO.GES';
+//$checkfilearray[] = '/PAC_APO.GES';
 
+//$checkfilearray[] = '/ADR_APO.UPD';
 
+//Einlesen des Verzeichnisses im Basisordner
+$dir = scandir(BASE_FOLDER, 1);
 
-
-
+//Durchlaufen des Arrays mit den zu bearbeitenden Dateien
 foreach($checkfilearray as $checkfile) {
+
+    //Startzeit der Datei
     $starteinzel= microtime(true);
 
-    $chIfa = fopen(__DIR__.$checkfile, "r");
+    //Handler auf die Datei
+    $chIfa = fopen(BASE_FOLDER.'/'.$dir[0].$checkfile, "r");
 
+
+    //Tabellendaten einlesen (Tabellenname, UPD oder GES und Startzeit
     $tablename = getTablename($chIfa);
 
+    //Felddatenarray erstellen
     $fieldarray = createFieldArray($chIfa);
 
 
-    //echo '<pre>';
-    //echo var_dump($fieldarray);
-    //echo '</pre>';
 
+    //Tabellen anlegen wenn nicht vorhanden
     createTable($tablename[0],$db_link,$fieldarray);
 
 
-    //echo 'rest';
 
+    //Abfrage ob Update oder Gesamt
     if($tablename[1] == 'GES'){
-        echo 'bla';
-        $dataarray = createshortdataarray($chIfa);
-        echo 'blu';
+
+        //Schnelle abarbeitung der Inputs
+        $dataarray = createshortdataarray($chIfa,$tablename,$db_link,$fieldarray);
+
     }
     if($tablename[1] == 'UPD'){
-        $dataarray = createdataarray($chIfa);
+        //Erstellung eines Arrays mit Insert, Update und Delete
+        $dataarray = createdataarray($chIfa,$tablename[0],$db_link,$fieldarray);
+
+        if($dataarray[0]) {
+            insertDataSingle($dataarray[0],$tablename,$db_link,$fieldarray);
+        }
+
+        if($dataarray[1]) {
+            updateDataSingle($dataarray[1],$tablename,$db_link,$fieldarray);
+        }
+        if($dataarray[2]) {
+            setDeleteDataSingle($dataarray[2],$tablename,$db_link,$fieldarray);
+        }
+
+
+
     }
 
-    //echo '<pre>';
-    //echo var_dump($dataarray);
-    //echo '</pre>';
 
-
-
-    if($dataarray[0]) {
-        insertDataSingle($dataarray[0],$tablename[0],$db_link,$fieldarray);
-    }
-    /*
-    if($dataarray[1]) {
-        //updateDataSingle($dataarray[1],$tablename[0],$db_link,$fieldarray);
-    }
-    if($dataarray[2]) {
-        //setDeleteDataSingle($dataarray[2],$tablename[0],$db_link,$fieldarray);
-    }
-
-    */
-
+    //Anzeige der Laufzeit einer Datei
     $dauereinzel = microtime(true) - $starteinzel;
-    echo "Verarbeitung der Datei: $dauereinzel Sek.";
+    echo "Verarbeitung der Datei: $dauereinzel Sek. <br /><br />";
 
 }
 
-$dauer = microtime(true) - $start;
-echo "Verarbeitung des Skripts: $dauer Sek.";
+//Verschieben der Dateien zu Done
+rename(BASE_FOLDER.'/'.$dir[0],DONE_FOLDER.'/'.$dir[0]);
 
+//Anzeige der Gesamtlaufzeit
+$dauer = microtime(true) - $start;
+echo "Verarbeitung des Skripts: $dauer Sek. <br /><br />";
+
+
+//Lösungsvermerk im letzten Eintrag einfügen
+function setDeleteDataSingle($dataarray, $tablename, $db_link, $fieldarray) {
+
+
+
+    foreach ($dataarray as $datas) {
+
+        $lastselect = "SELECT * FROM " . $tablename[0] . " WHERE Key_ADR = " . $datas['01']." ORDER BY UID DESC LIMIT 1";
+
+
+        if ($result = $db_link->query($lastselect)) {
+            //echo "Import erfolgreich";
+        } else {
+            echo "Fetch nicht erfolgreich: " . $db_link->error . '</br>';
+        }
+
+        $row = $result->fetch_assoc();
+
+
+        $start = "UPDATE " . $tablename[0]." ";
+        $start .= "SET DELETED = 1, TIME_DELETED = ".$tablename[2]." ";
+        $start .= "WHERE UID = " . $row['UID'];
+
+
+
+
+        if ($db_link->query($start) === TRUE) {
+            //echo "Import erfolgreich";
+        } else {
+            echo "DELETE nicht erfolgreich: " . $db_link->error . '</br>';
+        }
+
+    }
+
+
+
+
+
+
+}
+
+
+//Erstellen eines kompletten Datensatzes mit den Werten des letzten Eintrages und den Updatedaten
+//Kann schnell geändert werden do das nur noch die Änderugen in einem Datensatz stehen
 function updateDataSingle($dataarray, $tablename, $db_link, $fieldarray) {
 
 
 
-
-    $start = "INSERT INTO ".$tablename." (";
+    $start = "INSERT INTO ".$tablename[0]." (";
 
     $i = 1;
     foreach ($fieldarray as $field) {
@@ -92,47 +148,104 @@ function updateDataSingle($dataarray, $tablename, $db_link, $fieldarray) {
         }
         $i++;
     }
-    $start .= ') VALUES ';
+    $start .= ' , TIME_START ) VALUES ';
     $d = 1;
     $u = 1;
-    $select = $start;
+
     foreach ($dataarray as $datas) {
 
-        $lastselect = "SELECT * FROM ".$tablename." WHERE  ORDER BY id DESC LIMIT 1";
+        $lastselect = "SELECT * FROM ".$tablename[0]." WHERE Key_ADR = ".$datas['01']." ORDER BY UID DESC LIMIT 1";
 
-        $result = $db_link->query($lastselect);
+
+
+
+        if ($result = $db_link->query($lastselect)) {
+            //echo "Import erfolgreich";
+        } else {
+            echo "Fetch nicht erfolgreich: " . $db_link->error.'</br>';
+        }
+
+        $row = $result->fetch_array();
 
 
 
         $select = $start;
         $select .= '( ';
-        //echo var_dump($datas);
-        //$select .= $data;
-        foreach ($datas as $data) {
-            //echo '<pre>';
-            //echo var_dump($data);
-            //echo '</pre>';
 
-            $select .= "'";
-            //$select .= mysql_real_escape_string($data);
-            //$firstkey = array_key_first($data);
-            //$select .= $db_link->real_escape_string($data[$firstkey]);
-            $select .= $db_link->real_escape_string($data);
-            if($u < count($datas)) {
-                $select .= "' ,";
+
+        foreach ($fieldarray as $fieldkey => $field) {
+
+
+
+
+
+            $fieldmatch = false;
+
+            foreach ($datas as $index => $data) {
+
+
+                if(strval($index) == strval($field[0])) {
+
+
+                    $select .= "'";
+
+                    $stringdata = protoreplace($data);
+                    $select .= $db_link->real_escape_string($stringdata);
+                    if($u < count($fieldarray)) {
+                        $select .= "' ,";
+                    }
+                    else {
+                        $select .= "'";
+                    }
+                    $u++;
+                    $fieldmatch = true;
+                }
+
+
             }
-            else {
-                $select .= "'";
+            if($fieldmatch == false) {
+
+                echo $row[$fieldkey];
+
+                if($row[$fieldkey+1] != NULL){
+                    $select .= "'".$row[$fieldkey+1]."'";
+                }
+                else {
+                    $select .= "NULL";
+                }
+
+
+                //$select .= "NULL";
+                if($u < count($fieldarray)) {
+                    $select .= " ,";
+                }
+
+                $u++;
             }
-            $u++;
+
+
+
+
+
+
         }
+        $select .= " , ".$tablename[2];
 
         $select .= ') ';
         if($d < count($dataarray)) {
-            $select .= ' , ';
+            //$select .= ' , ';
         }
         $u = 1;
         $d++;
+
+
+
+        if ($db_link->query($select) === TRUE) {
+            //echo "Import erfolgreich";
+        } else {
+            echo "Import nicht erfolgreich: " . $db_link->error.'</br>';
+            echo "Query: ".$select;
+        }
 
 
 
@@ -140,19 +253,13 @@ function updateDataSingle($dataarray, $tablename, $db_link, $fieldarray) {
     }
     //$select .= ')';
 
-    //echo '<pre>';
-    //echo $select;
-    //echo '</pre>';
 
-    if ($db_link->query($select) === TRUE) {
-        //echo "Import erfolgreich";
-    } else {
-        echo "Import nicht erfolgreich: " . $db_link->error.'</br>';
-    }
 
 
 }
 
+//Erstellt drei Arrays für Insert, Update und Delete aus den Updatedateien
+//Fügt diese danach in einem Array zusammen
 function createdataarray($chIfa) {
 
     //$nexttable = 0;
@@ -191,23 +298,28 @@ function createdataarray($chIfa) {
 
             }
 
+            if($value == "E") {
+                break;
+
+            }
+
         }
 
         if($nextdata == 1 && $identifier != '00') {
-            $dataarray[$i][$datacounter] = $value;
+            $dataarray[$i][$identifier] = $value;
 
             $datacounter ++;
         }
 
         if($nextdelete == 1 && $identifier != '00') {
-            $deletearray[$i][$datacounter] = $value;
+            $deletearray[$i][$identifier] = $value;
             $datacounter ++;
         }
 
         if($nextupdate == 1 && $identifier != '00') {
 
             //
-            $updatearray[$i][$datacounter] = $value;
+            $updatearray[$i][$identifier] = $value;
             $datacounter ++;
         }
 
@@ -222,8 +334,9 @@ function createdataarray($chIfa) {
 }
 
 
-
-function createshortdataarray($chIfa) {
+//Verarbeitet die Inserts bei GES Dateien
+//Nach 5000 Einträgen im Array wird Insert ausgeführt
+function createshortdataarray($chIfa,$tablename,$db_link,$fieldarray) {
 
     //$nexttable = 0;
     //$nextfield = 0;
@@ -236,10 +349,14 @@ function createshortdataarray($chIfa) {
     $dataarray = array();
     $i = -1;
     $allarray = array();
+    $counter = 1;
 
+    $datainsert = 0;
     while(($rowCsvIfa = fgets($chIfa)) !== FALSE) {
         $identifier = substr($rowCsvIfa, 0, 2);
         $value = substr($rowCsvIfa, 2, -2);
+
+
 
         if ($identifier == '00') {
             $datacounter = 0;
@@ -249,35 +366,57 @@ function createshortdataarray($chIfa) {
                 $nextdata = 1;
 
                 $dataset = 1;
+                //echo '<pre>';
+                //echo var_dump($value);
+                //echo '</pre>';
                 $i++;
+            }
+            else if($value == "F") {
+                $break = 0;
             }
             else {
                $break = 1;
             }
 
+            if(count($dataarray) == 5000 && $nextdata == 1) {
+
+
+
+                insertDataSingle($dataarray,$tablename,$db_link,$fieldarray);
+                //$counter = 0;
+                $dataarray = null;
+                $datainsert++;
+            }
+
         }
+
 
         if($nextdata == 1 && $identifier != '00') {
             $dataarray[$i][$datacounter] = $value;
 
-            $datacounter ++;
+
+            $datacounter++;
         }
+        //$counter++;
 
         if($break == 1 && $dataset == 1) {
-            $allarray[0] = $dataarray;
 
-            return $allarray;
         }
+
+
+
+
     }
+    //Insert für die letzte Arrayrunde
+    insertDataSingle($dataarray,$tablename,$db_link,$fieldarray);
 }
 
+
+//erstellen des Tablearrays
+//Tabellename, Dateiart, Startzeit
 function getTablename($chIfa) {
 
     $nexttable = 0;
-    //$nextfield = 0;
-    //$nextdata = 0;
-    //$nextupdate = 0;
-    //$nextdelete = 0;
 
     $tablevalue = array();
 
@@ -315,6 +454,8 @@ function getTablename($chIfa) {
 
 }
 
+
+//Erstellt Array mit Feldinformationen
 function createFieldArray($chIfa) {
     $fielarray = array();
     $insertcounter = 0;
@@ -324,9 +465,7 @@ function createFieldArray($chIfa) {
 
     //$nexttable = 0;
     $nextfield = 0;
-    //$nextdata = 0;
-    //$nextupdate = 0;
-    //$nextdelete = 0;
+
 
     while(($rowCsvIfa = fgets($chIfa)) !== FALSE) {
         $identifier = substr($rowCsvIfa, 0, 2);
@@ -383,14 +522,18 @@ function createFieldArray($chIfa) {
     }
 }
 
+
+//Ersetzt dir Prototypen durch Zeichen
 function protoreplace($text) {
     $search  = array('\A22', '\a22', '\A23', '\a23', '\A24' , '\a24' , '\A25' , '\a25' , '\A29' , '\a29' , '\a33' , '\A45' , '\a45' , '\a63' , '\b63' , '\c22' , '\C27' , '\c27' , '\C49' , '\c49' , '\D27' , '\d27' , '\D63' , '\d63' , '\E22' , '\e22' , '\E23' , '\e23' , '\E24'  , '\e24'  , '\E25' , '\e25' , '\E27' , '\e27' , '\E33' , '\E66' , '\e63' , '\F63' , '\f63' , '\G32' , '\g32' , '\G63' , '\g63' , '\H63' , '\h63' , '\I22' , '\i22' , '\I23' , '\i23' , '\I24' , '\i24' , '\I25'  , '\i25' , '\I36'  , '\i36' , '\I45' , '\i45' , '\i63' , '\J63' , '\j63' , '\k63' , '\L63' , '\l63' , '\M33'  , '\m33' , '\m63' , '\N26' , '\n26' , '\N27' , '\n27' , '\n63' , '\O22' , '\o22' , '\O23' , '\o23' , '\O24' , '\o24' , '\O25' , '\o25' , '\O35' , '\o35' , '\O42' , '\o42' , '\O45' , '\o45' , '\o63' , '\P63' , '\p63' , '\Q63' , '\q63' , '\R27' , '\r27' , '\r63' , '\S27' , '\s27' , '\S39' , '\s39' , '\S49' , '\s49' , '\S63' , '\s63' , '\T27' , '\t27' , '\t63' , '\U22' , '\u22' , '\U23' , '\u23' , '\U24' , '\u24' , '\U25' , '\u25' , '\U29' , '\u29' , '\u63' , '\W63' , '\w63' , '\x63' , '\Y22' , '\y22' , '\Y25' , '\y25' , '\Y63' , '\y63' , '\Z27' , '\z27' , '\z63' , '\321' , '\323' , '\324' , '\325' , '\326' , '\327' , '\328' , '\329' , '\330' , '\333' , '\340' , '\341' , '\344' , '\345' , '\346' , '\347' , '\348' , '\351' , '\360' , '\361' , '\362' , '\363' , '\364' , '\365' , '\367' , '\372' , '\375' , '\380' , '\420' , '\421' , '\422' , '\423' , '\424' , '\425' , '\426' , '\427' , '\428' , '\429' , '\430' , '\431' , '\432' , '\435' , '\460' , '\462' , '\463' , '\465' , '\466' , '\467' , '\473' , '\520' , '\521' , '\535' , '\565' , '\900');
-    $replace = array('Á', 'á', 'À', 'à', 'Â', 'â', 'Ä', 'ä', 'Å', 'å', '', 'Æ', 'æ', 'æ', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '');
+    $replace = array('Á', 'á', 'À', 'à', 'Â', 'â', 'Ä', 'ä', 'Å', 'å', '', 'Æ', 'æ', 'α', 'β', 'ć', 'Č', 'č', 'Ç', 'ç', 'Ď', 'ď', 'Δ', 'δ', 'É', 'é', 'È', 'è', 'Ê', 'ê', 'Ë', 'ë', 'Ě', 'ě', 'Ē', 'Ε', 'ε', 'Φ', 'φ', 'Ǧ', 'ǧ', 'Γ', 'γ', 'Θ', 'θ', 'Í', 'í', 'Ì', 'ì', 'Î', 'î', 'Ï', 'ï', 'i', 'i', 'IJ', 'ij', 'ι', 'Η', 'η', 'κ', 'Λ', 'λ', 'M', 'm', 'μ', 'N', 'n', 'Ň', 'ň', 'ν', 'Ó', 'ó', 'Ò', 'ò', 'Ô', 'ô', 'Ö', 'ö', 'Ő', 'ő', 'Ø', 'ø', 'Œ', 'œ', 'ο', 'Π', 'π', 'Ξ', 'ξ', 'Ř', 'ř', 'ρ', 'Š', 'š', 'ß', 'ß', 'Ş', 'ş', 'Σ', 'σ', 'Ť', 'ť', 'τ', 'Ú', 'ú', 'Ù', 'ù', 'Û', 'û', 'Ü', 'ü', 'Ů', 'Ů', 'υ', 'Ω', 'ω', 'χ', 'Ý', 'ý', 'Ÿ', 'ÿ', 'Ψ', 'ψ', 'Ž', 'ž', 'ζ', ',', ':', '!', '?', '-', '=', '/', '’', '‘', '\\', '⋅', '|', '′', '′′', '-', '°', '‰', '≙', '+', '&', '*', '§', '%', ' ', '$', '@', '×', '®', '(', ')', '[', ']', '{', '}', '<', '>', '«', '»', '"', '"', '→', '↑', '±', '∞', '↔', '~', '≃', '≅', 'ø', '≤', '≥', '↓', '≈', '€');
+
+
 
     return str_replace($search, $replace, $text);
 }
 
-
+//Erstellt die Tabellen wenn sie noch nicht existieren
 function createTable($tablename, $db_link, $fieldarray) {
 
 
@@ -401,9 +544,7 @@ function createTable($tablename, $db_link, $fieldarray) {
     $sql .= "UID int NOT NULL AUTO_INCREMENT , ";
     foreach ($fieldarray as $field) {
 
-        //echo '<pre>';
-        //echo var_dump($field);
-        //echo '</pre>';
+
         if($field[6] == 'AL1' || $field[6] == 'AN1' || $field[6] == 'FN1' || $field[6] == 'FN2' || $field[6] == 'GRU' || $field[6] == 'ID1' || $field[6] == 'IND' || $field[6] == 'MPG' || $field[6] == 'NU3' || $field[6] == 'PRO' || $field[6] == 'WGS') {
             $feldtyp = 'varchar';
         }
@@ -510,15 +651,11 @@ function createTable($tablename, $db_link, $fieldarray) {
     $sql .= ")";
     $sql .= ")";
 
-    echo '<pre>';
-    //echo var_dump($primarykeys);
-    echo $sql;
-    echo '</pre>';
 
 
 
     if ($db_link->query($sql) === TRUE) {
-        echo "Table created successfully";
+        echo "Table created successfully: ".$tablename;
     } else {
         echo "Error creating table: " . $db_link->error;
     }
@@ -527,17 +664,15 @@ function createTable($tablename, $db_link, $fieldarray) {
 
 }
 
-
+//Insert in Datenbank einfügen
 function insertDataSingle($dataarray, $tablename, $db_link, $fieldarray) {
 
 
-    $start = "INSERT INTO ".$tablename." (";
+    $start = "INSERT INTO ".$tablename[0]." (";
 
     $i = 1;
     foreach ($fieldarray as $field) {
-        //echo '<pre>';
-        //echo var_dump($field);
-        //echo '</pre>';
+
 
         $start .= $field[1];
         if($i < count($fieldarray)) {
@@ -545,36 +680,51 @@ function insertDataSingle($dataarray, $tablename, $db_link, $fieldarray) {
         }
         $i++;
     }
-    $start .= ') VALUES ';
+    $start .= ', TIME_START) VALUES ';
     $d = 1;
     $u = 1;
     $select = $start;
     foreach ($dataarray as $datas) {
         $select = $start;
         $select .= '( ';
-        //echo '<pre>';
-        //echo var_dump($datas);
-        //echo '</pre>';
-        //$select .= $data;
-        foreach ($datas as $data) {
-            //echo '<pre>';
-            //echo var_dump($data);
-            //echo '</pre>';
 
-            $select .= "'";
-            //$select .= mysql_real_escape_string($data);
-            //$firstkey = array_key_first($data);
-            //$select .= $db_link->real_escape_string($data[$firstkey]);
-            $select .= $db_link->real_escape_string($data);
-            if($u < count($datas)) {
-                $select .= "' ,";
+        foreach ($datas as $data) {
+
+
+            if($data == "") {
+                //echo "Null";
+                $select .= "NULL";
             }
             else {
                 $select .= "'";
-            }
-            $u++;
-        }
 
+                $stringdata = protoreplace($data);
+                $select .= $db_link->real_escape_string($stringdata);
+            }
+
+
+            if($data == "") {
+                //echo "Null";
+
+                if($u < count($datas)) {
+                    $select .= " ,";
+                }
+                else {
+                    //$select .= "";
+                }
+                $u++;
+            }else {
+                if($u < count($datas)) {
+                    $select .= "' ,";
+                }
+                else {
+                    $select .= "'";
+                }
+                $u++;
+            }
+
+        }
+        $select .= " , ".$tablename[2];
         $select .= ') ';
         if($d < count($dataarray)) {
             //$select .= ' , ';
@@ -582,19 +732,27 @@ function insertDataSingle($dataarray, $tablename, $db_link, $fieldarray) {
         $u = 1;
         $d++;
 
-        //echo '<pre>';
-        //echo $select;
-        //echo '</pre>';
+        
+
 
         if ($db_link->query($select) === TRUE) {
             //echo "Import erfolgreich";
         } else {
             echo "Import nicht erfolgreich: " . $db_link->error.'</br>';
-        }
+            echo '<pre>';
+            echo $select;
+            echo '</pre>';
 
+        }
 
     }
     //$select .= ')';
+
+    //if ($db_link->query($select) === TRUE) {
+        //echo "Import erfolgreich";
+    //} else {
+    //    echo "Import nicht erfolgreich: " . $db_link->error.'</br>';
+    //}
 
 
 

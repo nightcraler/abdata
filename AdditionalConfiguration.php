@@ -13,8 +13,8 @@ $mysql_passwort = 'root';
 $mysql_datenbank = 'abdata';
 
 // Ordner mit zu verarbeitenden/verarbeiteten ILD-Dateien, organisiert in Unterordnern mit Datum (z.B. data/YYMMDD/...ild)
-define("BASE_FOLDER", "/usr/local/www/apache24/noexec/dev/amnog/preise/data");
-define("DONE_FOLDER", "/usr/local/www/apache24/noexec/dev/amnog/preise/done");
+define("BASE_FOLDER", "./daten");
+define("DONE_FOLDER", "./done");
 
 $GLOBALS['dblink'] = mysqli_connect($mysql_hoster, $mysql_nutzer, $mysql_passwort);
 mysqli_set_charset($GLOBALS['dblink'], 'utf8');
