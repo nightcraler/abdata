@@ -3,7 +3,7 @@
 
 //Start
 $start= microtime(true);
-echo 'Start: '.$start;
+echo 'Start: '.$start.'<br /><br />';
 
 //Einbinden der Configuration
 include('AdditionalConfiguration.php');
@@ -14,76 +14,88 @@ $db_link = $GLOBALS['dblink'];
 //Arrays mit den zu bearbeitenden Dateien
 $checkfilearray = array();
 
-//$checkfilearray[] = '/ADR_APO.GES';
-//$checkfilearray[] = '/DAR_APO.GES';
-//$checkfilearray[] = '/PGR_APO.GES';
-//$checkfilearray[] = '/PGR2_APO.GES';
-//$checkfilearray[] = '/WAR_APO.GES';
-//$checkfilearray[] = '/PAC_APO.GES';
+$checkfilearray[] = '/ADR_APO.GES';
+$checkfilearray[] = '/DAR_APO.GES';
+$checkfilearray[] = '/PGR_APO.GES';
+$checkfilearray[] = '/PGR2_APO.GES';
+$checkfilearray[] = '/WAR_APO.GES';
+$checkfilearray[] = '/PAC_APO.GES';
 
-//$checkfilearray[] = '/ADR_APO.UPD';
+$checkfilearray[] = '/ADR_APO.UPD';
+$checkfilearray[] = '/DAR_APO.UPD';
+$checkfilearray[] = '/PGR_APO.UPD';
+$checkfilearray[] = '/PGR2_APO.UPD';
+$checkfilearray[] = '/WAR_APO.UPD';
+$checkfilearray[] = '/PAC_APO.UPD';
 
 //Einlesen des Verzeichnisses im Basisordner
 $dir = scandir(BASE_FOLDER, 1);
 
+//echo var_dump($dir);
+
 //Durchlaufen des Arrays mit den zu bearbeitenden Dateien
 foreach($checkfilearray as $checkfile) {
 
-    //Startzeit der Datei
-    $starteinzel= microtime(true);
+    if (file_exists(BASE_FOLDER.'/'.$dir[0].$checkfile)) {
 
-    //Handler auf die Datei
-    $chIfa = fopen(BASE_FOLDER.'/'.$dir[0].$checkfile, "r");
+        //Startzeit der Datei
+        $starteinzel = microtime(true);
 
-
-    //Tabellendaten einlesen (Tabellenname, UPD oder GES und Startzeit
-    $tablename = getTablename($chIfa);
-
-    //Felddatenarray erstellen
-    $fieldarray = createFieldArray($chIfa);
+        //Handler auf die Datei
+        $chIfa = fopen(BASE_FOLDER . '/' . $dir[0] . $checkfile, "r");
 
 
+        //Tabellendaten einlesen (Tabellenname, UPD oder GES und Startzeit
+        $tablename = getTablename($chIfa);
 
-    //Tabellen anlegen wenn nicht vorhanden
-    createTable($tablename[0],$db_link,$fieldarray);
+        //Felddatenarray erstellen
+        $fieldarray = createFieldArray($chIfa);
 
 
 
-    //Abfrage ob Update oder Gesamt
-    if($tablename[1] == 'GES'){
+        //Tabellen anlegen wenn nicht vorhanden
+        createTable($tablename[0], $db_link, $fieldarray);
 
-        //Schnelle abarbeitung der Inputs
-        $dataarray = createshortdataarray($chIfa,$tablename,$db_link,$fieldarray);
+
+        //Abfrage ob Update oder Gesamt
+        if ($tablename[1] == 'GES') {
+
+            //Schnelle abarbeitung der Inputs
+            $dataarray = createshortdataarray($chIfa, $tablename, $db_link, $fieldarray);
+
+        }
+        if ($tablename[1] == 'UPD') {
+            //Erstellung eines Arrays mit Insert, Update und Delete
+            $dataarray = createdataarray($chIfa, $tablename[0], $db_link, $fieldarray);
+
+            if ($dataarray[0]) {
+                insertDataSingle($dataarray[0], $tablename, $db_link, $fieldarray);
+            }
+
+            if ($dataarray[1]) {
+                updateDataSingle($dataarray[1], $tablename, $db_link, $fieldarray);
+            }
+            if ($dataarray[2]) {
+                setDeleteDataSingle($dataarray[2], $tablename, $db_link, $fieldarray);
+            }
+
+
+        }
+
+
+        //Anzeige der Laufzeit einer Datei
+        $dauereinzel = microtime(true) - $starteinzel;
+        echo "Verarbeitung der Datei: $dauereinzel Sek. <br /><br />";
 
     }
-    if($tablename[1] == 'UPD'){
-        //Erstellung eines Arrays mit Insert, Update und Delete
-        $dataarray = createdataarray($chIfa,$tablename[0],$db_link,$fieldarray);
-
-        if($dataarray[0]) {
-            insertDataSingle($dataarray[0],$tablename,$db_link,$fieldarray);
-        }
-
-        if($dataarray[1]) {
-            updateDataSingle($dataarray[1],$tablename,$db_link,$fieldarray);
-        }
-        if($dataarray[2]) {
-            setDeleteDataSingle($dataarray[2],$tablename,$db_link,$fieldarray);
-        }
-
-
-
-    }
-
-
-    //Anzeige der Laufzeit einer Datei
-    $dauereinzel = microtime(true) - $starteinzel;
-    echo "Verarbeitung der Datei: $dauereinzel Sek. <br /><br />";
 
 }
 
 //Verschieben der Dateien zu Done
-rename(BASE_FOLDER.'/'.$dir[0],DONE_FOLDER.'/'.$dir[0]);
+if(count($dir) > 2) {
+    rename(BASE_FOLDER.'/'.$dir[0],DONE_FOLDER.'/'.$dir[0]);
+}
+
 
 //Anzeige der Gesamtlaufzeit
 $dauer = microtime(true) - $start;
@@ -97,7 +109,7 @@ function setDeleteDataSingle($dataarray, $tablename, $db_link, $fieldarray) {
 
     foreach ($dataarray as $datas) {
 
-        $lastselect = "SELECT * FROM " . $tablename[0] . " WHERE Key_ADR = " . $datas['01']." ORDER BY UID DESC LIMIT 1";
+        $lastselect = "SELECT * FROM " . $tablename[0] . " WHERE ".$fieldarray[0][1]." = " . $datas['01']." ORDER BY UID DESC LIMIT 1";
 
 
         if ($result = $db_link->query($lastselect)) {
@@ -154,7 +166,7 @@ function updateDataSingle($dataarray, $tablename, $db_link, $fieldarray) {
 
     foreach ($dataarray as $datas) {
 
-        $lastselect = "SELECT * FROM ".$tablename[0]." WHERE Key_ADR = ".$datas['01']." ORDER BY UID DESC LIMIT 1";
+        $lastselect = "SELECT * FROM ".$tablename[0]." WHERE ".$fieldarray[0][1]." = ".$datas['01']." ORDER BY UID DESC LIMIT 1";
 
 
 
@@ -205,7 +217,7 @@ function updateDataSingle($dataarray, $tablename, $db_link, $fieldarray) {
             }
             if($fieldmatch == false) {
 
-                echo $row[$fieldkey];
+                //echo $row[$fieldkey];
 
                 if($row[$fieldkey+1] != NULL){
                     $select .= "'".$row[$fieldkey+1]."'";
@@ -243,8 +255,10 @@ function updateDataSingle($dataarray, $tablename, $db_link, $fieldarray) {
         if ($db_link->query($select) === TRUE) {
             //echo "Import erfolgreich";
         } else {
+            echo '<pre>';
             echo "Import nicht erfolgreich: " . $db_link->error.'</br>';
             echo "Query: ".$select;
+            echo '<pre>';
         }
 
 
@@ -655,9 +669,9 @@ function createTable($tablename, $db_link, $fieldarray) {
 
 
     if ($db_link->query($sql) === TRUE) {
-        echo "Table created successfully: ".$tablename;
+        echo "Table created successfully: ".$tablename.'<br /><br />';
     } else {
-        echo "Error creating table: " . $db_link->error;
+        echo "Error creating table: " . $db_link->error.'<br /><br />';
     }
 
 
@@ -732,7 +746,7 @@ function insertDataSingle($dataarray, $tablename, $db_link, $fieldarray) {
         $u = 1;
         $d++;
 
-        
+
 
 
         if ($db_link->query($select) === TRUE) {
