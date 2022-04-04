@@ -19,14 +19,14 @@ $checkfilearray[] = '/DAR_APO.GES';
 $checkfilearray[] = '/PGR_APO.GES';
 $checkfilearray[] = '/PGR2_APO.GES';
 $checkfilearray[] = '/WAR_APO.GES';
-$checkfilearray[] = '/PAC_APO.GES';
+//$checkfilearray[] = '/PAC_APO.GES';
 
 $checkfilearray[] = '/ADR_APO.UPD';
 $checkfilearray[] = '/DAR_APO.UPD';
 $checkfilearray[] = '/PGR_APO.UPD';
 $checkfilearray[] = '/PGR2_APO.UPD';
 $checkfilearray[] = '/WAR_APO.UPD';
-$checkfilearray[] = '/PAC_APO.UPD';
+//$checkfilearray[] = '/PAC_APO.UPD';
 
 //Einlesen des Verzeichnisses im Basisordner
 $dir = scandir(BASE_FOLDER, 1);
@@ -68,14 +68,25 @@ foreach($checkfilearray as $checkfile) {
             //Erstellung eines Arrays mit Insert, Update und Delete
             $dataarray = createdataarray($chIfa, $tablename[0], $db_link, $fieldarray);
 
+            //echo '<pre>';
+            //echo var_dump($dataarray[1]);
+            //echo '</pre>';
+
+
             if ($dataarray[0]) {
+                echo 'Anzahl neuer Datensätze <br />';
+                echo count($dataarray[0]).'<br />';
                 insertDataSingle($dataarray[0], $tablename, $db_link, $fieldarray);
             }
 
             if ($dataarray[1]) {
+                echo 'Anzahl aktualisierter Datensätze<br />';
+                echo count($dataarray[1]).'<br />';
                 updateDataSingle($dataarray[1], $tablename, $db_link, $fieldarray);
             }
             if ($dataarray[2]) {
+                echo 'Anzahl gelöschter Datensätze<br />';
+                echo count($dataarray[2]).'<br />';
                 setDeleteDataSingle($dataarray[2], $tablename, $db_link, $fieldarray);
             }
 
@@ -166,6 +177,9 @@ function updateDataSingle($dataarray, $tablename, $db_link, $fieldarray) {
 
     foreach ($dataarray as $datas) {
 
+       
+
+
         $lastselect = "SELECT * FROM ".$tablename[0]." WHERE ".$fieldarray[0][1]." = ".$datas['01']." ORDER BY UID DESC LIMIT 1";
 
 
@@ -181,59 +195,47 @@ function updateDataSingle($dataarray, $tablename, $db_link, $fieldarray) {
 
 
 
+
         $select = $start;
         $select .= '( ';
 
 
+
+
+
+
+
+
         foreach ($fieldarray as $fieldkey => $field) {
 
+            //echo '<pre>';
+            //echo var_dump($datas);
+            //echo var_dump($fieldarray);
+            //echo var_dump($row);
+            //echo var_dump($field);
+            //echo '</pre>';
 
-
-
-
-            $fieldmatch = false;
-
-            foreach ($datas as $index => $data) {
-
-
-                if(strval($index) == strval($field[0])) {
-
-
-                    $select .= "'";
-
-                    $stringdata = protoreplace($data);
-                    $select .= $db_link->real_escape_string($stringdata);
-                    if($u < count($fieldarray)) {
-                        $select .= "' ,";
-                    }
-                    else {
-                        $select .= "'";
-                    }
-                    $u++;
-                    $fieldmatch = true;
-                }
-
-
+            if(isset($datas[$field[0]]))
+            {
+                //echo "datatreffer";
+                $row[$field[1]] = $datas[$field[0]];
             }
-            if($fieldmatch == false) {
 
-                //echo $row[$fieldkey];
 
-                if($row[$fieldkey+1] != NULL){
-                    $select .= "'".$row[$fieldkey+1]."'";
+
+
+
+                $select .= "'";
+                $stringdata = protoreplace($row[$field[1]]);
+                $select .= $db_link->real_escape_string($stringdata);
+                if($u < count($fieldarray)) {
+                    $select .= "' ,";
                 }
                 else {
-                    $select .= "NULL";
+                    $select .= "'";
                 }
-
-
-                //$select .= "NULL";
-                if($u < count($fieldarray)) {
-                    $select .= " ,";
-                }
-
                 $u++;
-            }
+
 
 
 
@@ -264,6 +266,7 @@ function updateDataSingle($dataarray, $tablename, $db_link, $fieldarray) {
 
 
 
+
     }
     //$select .= ')';
 
@@ -282,6 +285,8 @@ function createdataarray($chIfa) {
     $nextupdate = 0;
     $nextdelete = 0;
     $dataarray = array();
+    $deletearray = array();
+    $updatearray = array();
     $i = -1;
     $allarray = array();
 
